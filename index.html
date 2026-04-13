@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="mn">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>AShUUIS Exam Suite v3.2</title>
+    <style>
+        :root { --primary: #2c3e50; --accent: #3498db; --success: #27ae60; --danger: #e74c3c; --bg: #f5f7fa; }
+        body { font-family: -apple-system, system-ui, sans-serif; background: var(--bg); margin: 0; padding: 0; }
+        .app-container { max-width: 800px; margin: auto; background: white; min-height: 100vh; display: flex; flex-direction: column; }
+        header { background: var(--primary); color: white; padding: 20px; text-align: center; }
+        .nav-tabs { display: flex; background: #ecf0f1; border-bottom: 2px solid #ddd; }
+        .nav-tabs button { flex: 1; padding: 15px; border: none; cursor: pointer; font-weight: bold; color: #7f8c8d; }
+        .nav-tabs button.active { background: white; color: var(--primary); border-bottom: 3px solid var(--accent); }
+        .content { padding: 20px; flex: 1; }
+        .hidden { display: none !important; }
+        .card { border: 1px solid #ddd; border-radius: 10px; padding: 15px; margin-bottom: 15px; background: #fff; }
+        input, textarea, select { width: 100%; padding: 12px; margin: 8px 0; border: 1px solid #ccc; border-radius: 6px; box-sizing: border-box; font-size: 16px; }
+        .btn { width: 100%; padding: 15px; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; margin-top: 10px; }
+        .btn-primary { background: var(--accent); color: white; }
+        .btn-danger { background: var(--danger); color: white; }
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .category-item { background: #fff; border: 2px solid #eee; padding: 15px; border-radius: 10px; text-align: center; cursor: pointer; position: relative; }
+        .exam-header { display: flex; justify-content: space-between; align-items: center; background: #34495e; color: white; padding: 15px 20px; position: sticky; top: 0; }
+        .option { display: block; padding: 12px; margin: 8px 0; border: 1px solid #ddd; border-radius: 6px; cursor: pointer; }
+        .q-list-item { border-bottom: 1px solid #eee; padding: 10px; display: flex; justify-content: space-between; align-items: center; }
+        .del-btn { background: var(--danger); color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; font-size: 12px; }
+    </style>
+</head>
+<body>
+
+<div class="app-container">
+    <header><h2>AShUUIS Шалгалтын Систем</h2></header>
+
+    <div id="nav" class="nav-tabs">
+        <button id="tab1" class="active" onclick="showTab('manage')">Удирдах</button>
+        <button id="tab2" onclick="showTab('exam-list')">Хичээлүүд</button>
+        <button id="tab3" onclick="showTab('full-exam')">Шалгалт</button>
+    </div>
+
+    <div class="content">
+        <div id="manage-section">
+            <div class="card">
+                <h3>📁 Excel-ээс Импортлох</h3>
+                <input type="file" id="csvFile" accept=".csv" onchange="handleImport()">
+                <p style="font-size: 11px; color: #d35400;">⚠️ Анхаар: CSV файлын багана бүр Таслал (,) эсвэл Цэг таслал (;)-аар тусгаарлагдсан байх ёстой.</p>
+            </div>
+
+            <div class="card">
+                <h3>🔍 Тестүүдийг харах/хасах</h3>
+                <input type="text" id="searchTerm" placeholder="Асуултаар хайх..." onkeyup="renderAllQuestions()">
+                <div id="questionsContainer" style="max-height: 300px; overflow-y: auto;">
+                    </div>
+                <button class="btn btn-danger" onclick="clearAllData()">🗑 Бүх өгөгдлийг устгах</button>
+            </div>
+        </div>
+
+        <div id="exam-list-section" class="hidden">
+            <div class="grid" id="subjectsGrid"></div>
+        </div>
+
+        <div id="full-exam-section" class="hidden">
+            <div class="card" style="text-align:center">
+                <h2>150 асуулт / 150 минут</h2>
+                <button class="btn btn-primary" onclick="startExam('all')">Эхлүүлэх</button>
+            </div>
+        </div>
+
+        <div id="exam-active-mode" class="hidden">
+            <div class="exam-header">
+                <span id="qCounter">1/150</span>
+                <span id="timer" style="font-family:monospace; font-size:20px; color:#ffeb3b">150:00</span>
+            </div>
+            <div id="quiz-area"></div>
+            <button class="btn btn-primary" onclick="nextQuestion()">Дараагийнх</button>
+            <button class="btn" onclick="exitExam()">Гарах</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    let db = JSON.parse(localStorage.getItem('ashuuis_db_v3')) || [];
+    const subjects = ["Клиник эм судлал", "Эмнэлзүйн эм судлал", "Өвчний тохиолдолд үзүүлэх эм зүйн тусламж", "Эмийн маркетинг", "Ургамал судлал", "Хор судлал", "Эмийн эдийн засаг", "Эм, эмнэлгийн бараа судлал", "Эмийн ургамал судлал, түүхий эд судлал", "Эмийн хими", "Эмийн технологи-1", "Эмийн технологи-2", "Эм зүйн менежмент", "Биофармаци", "Эм судлал", "Монгол эм, эмийн түүхий эд", "Монгол эмийн технологи", "Эмнэлзүйн эмийн эмчилгэээ", "Гален"];
+
+    function showTab(id) {
+        document.getElementById('manage-section').classList.toggle('hidden', id !== 'manage');
+        document.getElementById('exam-list-section').classList.toggle('hidden', id !== 'exam-list');
+        document.getElementById('full-exam-section').classList.toggle('hidden', id !== 'full-exam');
+        document.getElementById('exam-active-mode').classList.add('hidden');
+        document.getElementById('nav').classList.remove('hidden');
+        
+        document.querySelectorAll('.nav-tabs button').forEach(b => b.classList.remove('active'));
+        if(id === 'manage') { document.getElementById('tab1').classList.add('active'); renderAllQuestions(); }
+        if(id === 'exam-list') { document.getElementById('tab2').classList.add('active'); renderSubjects(); }
+        if(id === 'full-exam') document.getElementById('tab3').classList.add('active');
+    }
+
+    // Импортлох функц (Зассан хувилбар)
+    function handleImport() {
+        const file = document.getElementById('csvFile').files[0];
+        if(!file) return;
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            const content = e.target.result;
+            const rows = content.split(/\r?\n/);
+            let addedCount = 0;
+
+            rows.forEach((row, index) => {
+                if(index === 0 && row.includes("Асуулт")) return; // Header алгасах
+                
+                // Таслал эсвэл Цэг таслалаар салгах
+                const p = row.match(/(".*?"|[^,;]+)(?=[,;]|$)/g);
+                
+                if(p && p.length >= 9) {
+                    const clean = (val) => val ? val.replace(/^"|"$/g, '').trim() : "";
+                    db.push({
+                        sub: clean(p[0]),
+                        type: clean(p[1]),
+                        text: clean(p[2]),
+                        opts: [clean(p[3]), clean(p[4]), clean(p[5]), clean(p[6]), clean(p[7])],
+                        ans: clean(p[8])
+                    });
+                    addedCount++;
+                }
+            });
+
+            saveDB();
+            renderAllQuestions();
+            alert(`Амжилттай! ${addedCount} тест импортлогдлоо.`);
+        };
+        reader.readAsText(file);
+    }
+
+    // Асуултуудыг жагсааж харуулах (Устгах боломжтой)
+    function renderAllQuestions() {
+        const container = document.getElementById('questionsContainer');
+        const search = document.getElementById('searchTerm').value.toLowerCase();
+        container.innerHTML = "";
+        
+        const filtered = db.filter(q => q.text.toLowerCase().includes(search));
+        
+        filtered.forEach((q, index) => {
+            const div = document.createElement('div');
+            div.className = 'q-list-item';
+            div.innerHTML = `
+                <div style="max-width: 80%;">
+                    <small>${q.sub}</small><br>
+                    <strong>${q.text.substring(0, 50)}...</strong>
+                </div>
+                <button class="del-btn" onclick="deleteQuestion(${index})">Устгах</button>
+            `;
+            container.appendChild(div);
+        });
+    }
+
+    function deleteQuestion(idx) {
+        if(confirm("Энэ асуултыг устгах уу?")) {
+            db.splice(idx, 1);
+            saveDB();
+            renderAllQuestions();
+        }
+    }
+
+    function clearAllData() {
+        if(confirm("АНХААР: Бүх тестүүд устах болно. Итгэлтэй байна уу?")) {
+            db = [];
+            saveDB();
+            renderAllQuestions();
+        }
+    }
+
+    function renderSubjects() {
+        const grid = document.getElementById('subjectsGrid');
+        grid.innerHTML = subjects.map(s => {
+            const count = db.filter(q => q.sub === s).length;
+            return `<div class="category-item" onclick="startExam('${s}')"><strong>${s}</strong><br><small>${count} тест</small></div>`;
+        }).join('');
+    }
+
+    function saveDB() { localStorage.setItem('ashuuis_db_v3', JSON.stringify(db)); }
+
+    // Шалгалтын хэсэг өмнөхтэй адил ажиллана...
+    let examSet = []; let curIdx = 0; let timerInt;
+    function startExam(mode) {
+        examSet = mode === 'all' ? [...db] : db.filter(q => q.sub === mode);
+        if(examSet.length === 0) return alert("Тест байхгүй байна!");
+        examSet = examSet.sort(() => 0.5 - Math.random()).slice(0, 150);
+        curIdx = 0;
+        document.getElementById('nav').classList.add('hidden');
+        document.getElementById('manage-section').classList.add('hidden');
+        document.getElementById('exam-list-section').classList.add('hidden');
+        document.getElementById('full-exam-section').classList.add('hidden');
+        document.getElementById('exam-active-mode').classList.remove('hidden');
+        renderQuiz(); startTimer(150);
+    }
+
+    function renderQuiz() {
+        const q = examSet[curIdx];
+        document.getElementById('qCounter').innerText = `${curIdx+1}/${examSet.length}`;
+        document.getElementById('quiz-area').innerHTML = `
+            <div class="card">
+                <small>${q.sub} | ${q.type}-хэлбэр</small>
+                <p><strong>${q.text}</strong></p>
+                ${q.opts.map((o, i) => `<div class="option" onclick="this.style.background='#e8f4fd'">${i+1}. ${o}</div>`).join('')}
+                <div id="ansH" class="hidden" style="color:green; margin-top:10px;">Зөв хариулт: ${q.ans}</div>
+                <button class="btn" onclick="document.getElementById('ansH').classList.remove('hidden')">Хариу харах</button>
+            </div>
+        `;
+    }
+
+    function nextQuestion() { 
+        if(curIdx < examSet.length - 1) { curIdx++; renderQuiz(); } 
+        else { alert("Дууслаа!"); exitExam(); }
+    }
+
+    function startTimer(m) {
+        let s = m * 60;
+        clearInterval(timerInt);
+        timerInt = setInterval(() => {
+            s--;
+            let min = Math.floor(s/60), sec = s%60;
+            document.getElementById('timer').innerText = `${min}:${sec<10?'0':''}${sec}`;
+            if(s<=0) { clearInterval(timerInt); exitExam(); }
+        }, 1000);
+    }
+    function exitExam() { clearInterval(timerInt); showTab('manage'); }
+
+    renderAllQuestions();
+</script> 
+
+<button class="btn" style="background:#7f8c8d; color:white; margin-top: 20px;" onclick="exportJSON()">📥 Бүх тестээ файл болгож нөөцлөх (Backup)</button>
+
